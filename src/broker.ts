@@ -4,6 +4,11 @@
  * Keys are cached in memory only. A relay key is revocable upstream, so a
  * durable copy buys nothing and costs a leak surface; the TTL bounds how long
  * a revocation takes to reach this process.
+ *
+ * Every key that enters the cache is first proven against `GET /v1/models`,
+ * which the relay authenticates with the key itself. That turns "the key was
+ * revoked overnight" into one clear failure at the boundary instead of an
+ * opaque child error.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -16,10 +21,13 @@ export interface BrokerOptions {
   readonly ttlMs: number
   /** Lifetime requested when this plugin has to mint a key of its own. */
   readonly mintExpiresInDays?: number | undefined
+  /** Prove a key before handing it to a child. */
+  readonly preflight: boolean
 }
 
 interface Cached {
   readonly key: string
+  readonly keyId: number
   readonly at: number
 }
 
@@ -39,15 +47,15 @@ export class KeyBroker {
   /**
    * Resolve a usable key for the configured group.
    *
-   * Preference order: a live cached key, then an existing key bound to the
-   * group, then a freshly minted key named after this host so it can be
-   * revoked without touching the user's other keys.
+   * Order: a live cached key, then an existing key bound to the group, then a
+   * freshly minted key named after this host so it can be revoked without
+   * touching the user's other keys.
    */
   async keyFor(accessToken: string): Promise<{ key: string; keyId: number }> {
     const groupId = this.options.groupId
     const cached = this.cache.get(groupId)
     if (cached !== undefined && Date.now() - cached.at < this.options.ttlMs) {
-      return { key: cached.key, keyId: -1 }
+      return { key: cached.key, keyId: cached.keyId }
     }
 
     const keys = await api.listKeys(this.options.endpoint, accessToken)
@@ -57,8 +65,8 @@ export class KeyBroker {
         row.status === 'active' &&
         (row.expiresAt === null || Date.parse(row.expiresAt) > Date.now()),
     )
-    if (usable !== undefined) {
-      this.cache.set(groupId, { key: usable.key, at: Date.now() })
+    if (usable !== undefined && (await this.verify(usable.key))) {
+      this.cache.set(groupId, { key: usable.key, keyId: usable.id, at: Date.now() })
       return { key: usable.key, keyId: usable.id }
     }
 
@@ -69,9 +77,27 @@ export class KeyBroker {
         ? {}
         : { expiresInDays: this.options.mintExpiresInDays }),
     })
-    this.cache.set(groupId, { key: minted.key, at: Date.now() })
+    if (!(await this.verify(minted.key))) {
+      throw new Error(
+        `dsh-router: a freshly minted key for group ${String(groupId)} was rejected by the relay`,
+      )
+    }
+    this.cache.set(groupId, { key: minted.key, keyId: minted.id, at: Date.now() })
     this.ctx.logger.info('dsh-router: minted relay key %d for group %d', minted.id, groupId)
     return { key: minted.key, keyId: minted.id }
+  }
+
+  /** `GET /v1/models` is authenticated by the relay key itself. */
+  private async verify(key: string): Promise<boolean> {
+    if (!this.options.preflight) return true
+    try {
+      const models = await api.listModels(this.options.endpoint, key)
+      this.ctx.logger.debug('dsh-router: relay accepted the key (%d models)', models.length)
+      return true
+    } catch (error) {
+      this.ctx.logger.warn('dsh-router: relay rejected a key: %s', String(error))
+      return false
+    }
   }
 }
 

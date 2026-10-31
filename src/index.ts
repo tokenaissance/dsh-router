@@ -49,6 +49,8 @@ export interface Config {
   mintExpiresInDays?: number
   /** Grace before escalating child termination. */
   graceMs?: number
+  /** Prove a fetched relay key against `GET /v1/models` before using it. */
+  preflight?: boolean
   /**
    * Development escape hatch: the *name* of an environment variable holding a
    * sub2api access token. Never stored; a real login always wins.
@@ -70,6 +72,7 @@ export const Config: z<Config> = z.object({
   keyTtlMs: z.number().default(5 * 60_000),
   mintExpiresInDays: z.number().default(30),
   graceMs: z.number().default(5_000),
+  preflight: z.boolean().default(true),
   bootstrapTokenEnv: z.string(),
 })
 
@@ -85,6 +88,7 @@ export function apply(ctx: Context, config: Config): void {
     groupId: config.groupId,
     ttlMs: config.keyTtlMs ?? 5 * 60_000,
     mintExpiresInDays: config.mintExpiresInDays,
+    preflight: config.preflight ?? true,
   })
 
   ctx.subagents.registerProvider(

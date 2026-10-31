@@ -86,6 +86,7 @@ dsh plugin install /path/to/dsh-router
 | `keyEnv` / `baseUrlEnv` | `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` | 注入位置 |
 | `keyTtlMs` | 5 分钟 | relay key 内存缓存时长 |
 | `mintExpiresInDays` | 30 | 需要自建 key 时的有效期 |
+| `preflight` | `true` | 先 `GET /v1/models` 验一把 key 再起子进程 |
 | `bootstrapTokenEnv` | — | **开发用**：存放 access token 的环境变量名 |
 
 ## sub2api 契约（已核）
@@ -95,11 +96,24 @@ dsh plugin install /path/to/dsh-router
 | 登录 | `POST /api/v1/auth/login` `{email,password}` → `{access_token, refresh_token, expires_in}` |
 | 刷新 | `POST /api/v1/auth/refresh` |
 | 可用路由组 | `GET /api/v1/groups/available` |
-| 取 Key（含明文） | `GET /api/v1/api-keys` |
-| 建 Key | `POST /api/v1/api-keys` `{name, group_id, expires_in_days, quota}` |
-| 中继 | `POST {origin}/v1/messages`（Anthropic 形态） |
+| 取 Key（含明文） | `GET /api/v1/keys` |
+| 建 Key | `POST /api/v1/keys` `{name, group_id, expires_in_days, quota}`（带 `Idempotency-Key`） |
+| 中继 | `POST {origin}/v1/messages`（Anthropic 形态）· `POST /v1/chat/completions` · `POST /v1/responses` |
+| 探活 | `GET {origin}/v1/models`（用 relay key 认证，本包用它做 preflight） |
 
-**分组是有类型的**：有的组只接受 `/v1/messages`（Claude Code 形态，服务端会报 `This group is restricted to Claude Code clients`）。所以"给 Claude Code 用哪个组"和"给 Codex 用哪个组"是两个不同的组。
+> **路径注意**：用户 key 的真实挂载是 `/api/v1/keys`。`/api/v1/api-keys` 是部分 handler 注释里的旧写法，路由注册在 `routes/user.go`。
+
+**分组是有类型的**：`group.platform ∈ anthropic | openai | gemini | antigravity | grok | kimi | zhipu | deepseek | minimax | typesafe | composite`。有的组只接受 `/v1/messages`（Claude Code 形态，服务端会报 `This group is restricted to Claude Code clients`）。所以"给 Claude Code 用哪个组"和"给 Codex 用哪个组"是两个不同的组。
+
+**未绑定分组的 key 会在中继处 403**（`not assigned to any group`），所以 `groupId` 实际上是必填。
+
+### 上线前必须问部署方的三件事
+
+| 检查 | 为什么 |
+|---|---|
+| `GET /api/v1/settings/public` 里的后端模式 | 开了 backend mode 会禁用**所有**非 admin 面板 API，登录和建 key 一起失效 |
+| 登录是否强制验证码 | 开了 Turnstile/腾讯验证码，纯密码登录必然失败，只能走 token 引导 |
+| 是否有账号开了 2FA | 需额外调 `/auth/login/2fa`，v0.1 会明确报错 |
 
 ## 安全姿态
 

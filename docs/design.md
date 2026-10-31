@@ -26,13 +26,17 @@
 | 登录 | `POST {origin}/api/v1/auth/login`，body `{ email, password }` → `{ access_token, refresh_token, expires_in, token_type:"Bearer", user }` | `backend/internal/handler/auth_handler.go:238`、`:118` |
 | 刷新 | `POST {origin}/api/v1/auth/refresh` | `auth_handler.go:684` |
 | 可用路由组 | `GET {origin}/api/v1/groups/available`（Bearer） | `api_key_handler.go:321` |
-| 列出 Key | `GET {origin}/api/v1/api-keys`（Bearer）→ 含 **明文 key** 与 `group_id` | `api_key_handler.go:105`、`dto/mappers.go:87` |
-| 创建 Key | `POST {origin}/api/v1/api-keys`，body `{ name, group_id, expires_in_days, quota, custom_key, rate_limit_5h/1d/7d }` | `api_key_handler.go:34`、`:181` |
-| 中转调用 | `POST {origin}/v1/messages`（Anthropic 形态） | `gateway_handler.go:124` |
+| 列出 Key | `GET {origin}/api/v1/keys`（Bearer）→ 含 **明文 key** 与 `group_id` | 路由 `routes/user.go`；`api_key_handler.go:105`、`dto/mappers.go:87` |
+| 创建 Key | `POST {origin}/api/v1/keys`，body `{ name, group_id, expires_in_days, quota, custom_key, rate_limit_5h/1d/7d }`，需 `Idempotency-Key` | `api_key_handler.go:34`、`:181` |
+| 探活 | `GET {origin}/v1/models`（用 relay key 认证） | relay 路由 |
+| 中转调用 | `POST {origin}/v1/messages`（Anthropic 形态）· `/v1/chat/completions` · `/v1/responses` | `gateway_handler.go:124` |
+
+> 修正：用户 key 的挂载点是 `/api/v1/keys`；`/api/v1/api-keys` 只出现在 handler 注释里，已过期。
 
 两个必须注意的约束：
 
-- **分组是有类型的**。有的分组只接受 `/v1/messages`（Claude Code 形态），代码里直接报 "This group is restricted to Claude Code clients (/v1/messages only)"（`gateway_handler_responses.go:117`）。所以"client × 分组"是一个配对，不是两个独立选项。
+- **分组是有类型的**。`group.platform` 决定这个组能服务哪种客户端（anthropic / openai / gemini / grok / composite …）。有的分组只接受 `/v1/messages`（Claude Code 形态），代码里直接报 "This group is restricted to Claude Code clients (/v1/messages only)"（`gateway_handler_responses.go:117`）。所以"client × 分组"是一个配对，不是两个独立选项。未绑定分组的 key 会在中继处 403。
+- **面板可能整体关闭**。部署开了 backend mode 时会禁用所有非 admin 面板 API（登录与建 key 一起失效）；上线前先查 `GET /api/v1/settings/public`。
 - **登录可能撞验证码**。`Login` 里先 `VerifyCaptcha`（`auth_handler.go:247`），Deployment 开了 Turnstile/腾讯验证码时，纯密码登录会失败——插件页要么做验证码，要么引导用户改用 access token 登录。
 - 2FA 走 `POST /api/v1/auth/login/2fa`，返回 `{ requires_2fa, temp_token }`。
 

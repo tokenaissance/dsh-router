@@ -5,9 +5,13 @@
  *   POST /api/v1/auth/login          -> AuthResponse { access_token, refresh_token, expires_in }
  *   POST /api/v1/auth/refresh        -> same pair
  *   GET  /api/v1/groups/available    -> Group[]  (route groups the account may use)
- *   GET  /api/v1/api-keys            -> APIKey[] (includes the plaintext key)
- *   POST /api/v1/api-keys            -> APIKey   (201 Created)
+ *   GET  /api/v1/keys                -> APIKey[] (includes the plaintext key)
+ *   POST /api/v1/keys                -> APIKey   (send Idempotency-Key)
+ *   GET  {origin}/v1/models          -> relay catalogue, authenticated by the key
  *   POST {origin}/v1/messages        -> the relay itself (Anthropic-shaped)
+ *
+ * The user key mount is `/api/v1/keys`; the `/api/v1/api-keys` string in some
+ * handler doc comments is stale (the route is registered in routes/user.go).
  *
  * Every success is wrapped as `{ code: 0, message: "success", data }`; failures
  * use the HTTP status plus `{ code, message }`.
@@ -71,11 +75,17 @@ async function request(
   stage: Sub2ApiError['stage'],
   endpoint: string,
   path: string,
-  init: { method: 'GET' | 'POST'; token?: string | undefined; body?: unknown },
+  init: {
+    method: 'GET' | 'POST'
+    token?: string | undefined
+    body?: unknown
+    idempotencyKey?: string | undefined
+  },
 ): Promise<unknown> {
   const headers: Record<string, string> = { accept: 'application/json' }
   if (init.body !== undefined) headers['content-type'] = 'application/json'
   if (init.token !== undefined) headers.authorization = `Bearer ${init.token}`
+  if (init.idempotencyKey !== undefined) headers['idempotency-key'] = init.idempotencyKey
 
   let response: Response
   try {
@@ -151,7 +161,7 @@ export async function listGroups(endpoint: string, token: string): Promise<Route
 }
 
 export async function listKeys(endpoint: string, token: string): Promise<ApiKeyRow[]> {
-  const data = await request('keys', endpoint, '/api/v1/api-keys', { method: 'GET', token })
+  const data = await request('keys', endpoint, '/api/v1/keys', { method: 'GET', token })
   if (!Array.isArray(data)) throw new Sub2ApiError('keys', 0, 'keys payload is not an array')
   return data.map((entry) => {
     const row = entry as Record<string, unknown>
@@ -176,9 +186,12 @@ export async function createKey(
     quota?: number
   },
 ): Promise<ApiKeyRow> {
-  const data = await request('create-key', endpoint, '/api/v1/api-keys', {
+  const data = await request('create-key', endpoint, '/api/v1/keys', {
     method: 'POST',
     token,
+    // The route declares this header; the deployment may only observe it, but
+    // sending it is always correct and makes a retry safe.
+    idempotencyKey: `dsh-router-${body.name}-${String(body.groupId)}-${String(Date.now())}`,
     body: {
       name: body.name,
       group_id: body.groupId,
@@ -195,4 +208,31 @@ export async function createKey(
     expiresAt: typeof row.expires_at === 'string' ? row.expires_at : null,
     raw: row,
   }
+}
+
+/**
+ * Probe the relay with one key. `GET /v1/models` is authenticated by the relay
+ * key itself, so a 200 proves the key is live for its group before we ever
+ * spawn a child.
+ */
+export async function listModels(endpoint: string, relayKey: string): Promise<string[]> {
+  const data = await request('transport', endpoint, '/v1/models', {
+    method: 'GET',
+    token: relayKey,
+  })
+  const rows = Array.isArray(data) ? data : (data as { data?: unknown }).data
+  if (!Array.isArray(rows)) return []
+  return rows
+    .map((row) => (row as { id?: unknown }).id)
+    .filter((id): id is string => typeof id === 'string')
+}
+
+/**
+ * Whether this deployment still serves the user panel at all. A deployment in
+ * "backend mode" disables every non-admin panel API, login included, and the
+ * only way to tell is this endpoint.
+ */
+export async function publicSettings(endpoint: string): Promise<Record<string, unknown>> {
+  const data = await request('transport', endpoint, '/api/v1/settings/public', { method: 'GET' })
+  return (data ?? {}) as Record<string, unknown>
 }
