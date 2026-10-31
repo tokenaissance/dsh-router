@@ -120,6 +120,15 @@ dsh plugin install /path/to/dsh-router
 2. **再验 provider**：用 `bootstrapTokenEnv` 把 token 从环境喂进来，跑一次 `subagent_router`。
 3. **最后做页面**：v0.2 的登录页把第 2 步硬编码的东西搬上去。
 
+## 版本对齐（重要）
+
+本包的类型是按 DSH 仓库的 `0.2.2-alpha.2` 写的，而 npm 上 `@deepseek-ai/dsh-*` 目前是 `0.0.1-rc.1` 一代。两者间 `SubagentProvider` / `SubagentResult` 的字段可能已变。
+
+两种做法，选一个：
+
+- **随仓库开发**：把包放进 DSH 的 `packages/router/dsh-router/`，`workspace:*` 依赖天然对齐；
+- **出树发布**：把 `peerDependencies` 钉到你实际运行的那个 DSH 版本，并在 `pnpm run build` 后跑一次真实子智能体调用验证签名。
+
 ## 已知限制
 
 - v0.1 只实现了 Claude Code 的 print/stream-json 传输。Codex 需要另一套 app-server JSON-RPC 客户端（可参考 DSH 的 `subagent-codex/src/wire.ts`）。
