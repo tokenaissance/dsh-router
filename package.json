@@ -38,20 +38,28 @@
     "@deepseek-ai/dsh-subprocess": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-credentials": { "optional": false },
-    "@deepseek-ai/dsh-subagent": { "optional": false },
-    "@deepseek-ai/dsh-subprocess": { "optional": false }
+    "@deepseek-ai/dsh-credentials": {
+      "optional": false
+    },
+    "@deepseek-ai/dsh-subagent": {
+      "optional": false
+    },
+    "@deepseek-ai/dsh-subprocess": {
+      "optional": false
+    }
   },
   "devDependencies": {
     "@deepseek-ai/cordis": ">=4.0.5",
     "@deepseek-ai/dsh-credentials": "*",
     "@deepseek-ai/dsh-subagent": "*",
     "@deepseek-ai/dsh-subprocess": "*",
-    "@deepseek-ai/schemastery": ">=3.18.0",
     "@types/node": ">=24",
     "typescript": ">=6"
   },
   "engines": {
     "node": ">=24.9.0"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": ">=3.18.0"
   }
 }

@@ -49,7 +49,23 @@ pnpm install
 pnpm run build
 ```
 
-### 方式二：作为外部插件安装
+### 方式二：放进 DSH 仓库开发（推荐）
+
+`pnpm-workspace.yaml` 已覆盖 `packages/*/*`，一条命令把包放进去并把 DSH 依赖改写成 `workspace:*`：
+
+```sh
+node scripts/link-into-dsh.mjs /path/to/deepseek-harness          # 复制
+node scripts/link-into-dsh.mjs /path/to/deepseek-harness --link   # 软链，改代码即时生效
+```
+
+它会校验目标确实是 DSH 检出（有 `pnpm-workspace.yaml` 且覆盖 `packages/*/*`），不会覆盖已存在的目录（除非 `--force`）。之后：
+
+```sh
+cd /path/to/deepseek-harness && pnpm install && pnpm run build
+dsh --profile web --dump-config | grep -A5 subagent-router   # 确认装配进去
+```
+
+### 方式三：作为外部插件安装
 
 ```sh
 dsh plugin install /path/to/dsh-router
@@ -124,15 +140,48 @@ dsh plugin install /path/to/dsh-router
 
 ## 三步验证（别倒过来）
 
-1. **先 curl**：`/auth/login` → `/groups/available` → `/api-keys`，拿一把 key；然后
-   ```sh
-   ANTHROPIC_BASE_URL=https://sub2api.example.com \
-   ANTHROPIC_AUTH_TOKEN=sk-xxx \
-   claude -p "say hi"
-   ```
-   这步不通，后面全白做。
-2. **再验 provider**：用 `bootstrapTokenEnv` 把 token 从环境喂进来，跑一次 `subagent_router`。
-3. **最后做页面**：v0.2 的登录页把第 2 步硬编码的东西搬上去。
+### 第 1 步：跑 `scripts/verify.mjs`
+
+它按 provider 运行时**完全相同的顺序**走一遍，并额外发一次真实请求：
+
+```sh
+SUB2API_ORIGIN=https://sub2api.example.com \
+SUB2API_EMAIL=me@example.com SUB2API_PASSWORD=... \
+SUB2API_GROUP=12 \
+node scripts/verify.mjs
+```
+
+依次做：查面板是否开放 → 登录 → 列可用分组 → 复用/新建 key → `GET /v1/models` 验活 → `POST /v1/messages` 发一句真实请求。
+
+| 参数 | 作用 |
+|---|---|
+| `--group <id>` | 路由组（或 `SUB2API_GROUP`） |
+| `--model <id>` | 指定模型；省略则取 `/v1/models` 的第一个 |
+| `--dry-run` | 只验到 key 可用，不花钱发请求 |
+| `--token <jwt>` | 已有 token 时跳过登录（2FA / 验证码的逃生口） |
+| `--json` | 机器可读输出，便于 CI |
+
+成功会直接打印该填进 profile 的三行配置。**这步不通，后面的都白做。**
+
+### 第 2 步：让 provider 跑通
+
+用 `bootstrapTokenEnv` 把 token 从环境喂进来（不落盘），跑一次 `subagent_router`：
+
+```sh
+export SUB2API_ACCESS_TOKEN=...           # verify.mjs --json 里拿
+```
+
+```yaml
+- id: subagent-router
+  config:
+    endpoint: https://sub2api.example.com
+    groupId: 12
+    bootstrapTokenEnv: SUB2API_ACCESS_TOKEN
+```
+
+### 第 3 步：最后才做页面
+
+v0.2 的登录页把第 2 步硬编码的东西搬上去。
 
 ## 版本对齐（重要）
 
