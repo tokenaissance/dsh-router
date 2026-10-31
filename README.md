@@ -17,6 +17,8 @@ DSH  ──subagent_router()──▶  dsh-router provider
                                              上游订阅账号池
 ```
 
+![子智能体路由：dsh-router → sub2api → 子 agent](docs/images/subagent-routing.png)
+
 ## 为什么不是改配置就行
 
 三件事叠加，把"配置注入"这条路堵死了：
