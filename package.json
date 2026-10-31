@@ -1,0 +1,57 @@
+{
+  "name": "@tokenaissance/dsh-router",
+  "version": "0.1.0",
+  "description": "Route DeepSeek Harness subagents through sub2api: sign in once, fetch a route-group key per run, inject it into the child agent.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.5",
+    "@deepseek-ai/dsh-credentials": "*",
+    "@deepseek-ai/dsh-subagent": "*",
+    "@deepseek-ai/dsh-subprocess": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-credentials": { "optional": false },
+    "@deepseek-ai/dsh-subagent": { "optional": false },
+    "@deepseek-ai/dsh-subprocess": { "optional": false }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.5",
+    "@deepseek-ai/dsh-credentials": "*",
+    "@deepseek-ai/dsh-subagent": "*",
+    "@deepseek-ai/dsh-subprocess": "*",
+    "@deepseek-ai/schemastery": ">=3.18.0",
+    "@types/node": ">=24",
+    "typescript": ">=6"
+  },
+  "engines": {
+    "node": ">=24.9.0"
+  }
+}

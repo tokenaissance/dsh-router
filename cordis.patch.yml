@@ -1,0 +1,19 @@
+# dsh-router bundle patch: one provider row plus the model-facing tool that
+# delegates to it. Layer this after dsh-base (or any profile that already
+# mounts the subagent seam) and configure it from the profile patch:
+#
+#   - id: subagent-router
+#     config:
+#       endpoint: https://sub2api.example.com
+#       groupId: 12
+#
+- insert:
+    - id: subagent-router
+      name: '@tokenaissance/dsh-router'
+
+    - id: tool-subagent-router
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: router
+        toolName: subagent_router
+        maxDepth: provider-managed
